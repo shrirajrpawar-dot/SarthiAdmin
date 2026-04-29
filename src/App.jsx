@@ -38,9 +38,9 @@ function Login({ onLogin }) {
     <div style={loginStyles.container}>
       <div style={loginStyles.card}>
         <div style={loginStyles.logoBox}>
-          <div style={loginStyles.logoIcon}>L</div>
+          <div style={loginStyles.logoIcon}>S</div>
         </div>
-        <h1 style={loginStyles.title}>LoadGo Admin</h1>
+        <h1 style={loginStyles.title}>Sarthi Admin</h1>
         <p style={loginStyles.subtitle}>Sign in to manage your platform</p>
         <form onSubmit={handleLogin}>
           <input
@@ -54,7 +54,7 @@ function Login({ onLogin }) {
           {error && <p style={loginStyles.error}>{error}</p>}
           <button type="submit" style={loginStyles.btn}>Sign In</button>
         </form>
-        <p style={loginStyles.hint}>Default password: <code>loadgo</code></p>
+        <p style={loginStyles.hint}>Contact admin if you need access</p>
       </div>
     </div>
   );
@@ -64,9 +64,9 @@ function Sidebar({ onLogout }) {
   return (
     <div style={sidebarStyles.sidebar}>
       <div style={sidebarStyles.brand}>
-        <div style={sidebarStyles.brandLogo}>L</div>
+        <div style={sidebarStyles.brandLogo}>S</div>
         <div>
-          <div style={sidebarStyles.brandName}>LoadGo</div>
+          <div style={sidebarStyles.brandName}>Sarthi</div>
           <div style={sidebarStyles.brandSub}>Admin Panel</div>
         </div>
       </div>

@@ -1,130 +1,301 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase.js';
-import { PageTitle, Card, Badge } from '../components/Card.jsx';
+import { PageTitle, Card, Badge, tokens } from '../components/Card.jsx';
+import { FilterBar, filterByDateRange, toDate, exportCSV } from '../components/filterUtils.jsx';
 
-const STATUS_OPTIONS = ['all', 'searching', 'accepted', 'at_pickup', 'in_progress', 'at_drop', 'completed', 'cancelled'];
-const STATUS_COLORS = { searching: '#3B82F6', accepted: '#F59E0B', at_pickup: '#8B5CF6', in_progress: '#10B981', at_drop: '#10B981', completed: '#6B7280', cancelled: '#EF4444' };
-const STATUS_LABELS = { searching: 'Finding Driver', accepted: 'Driver Coming', at_pickup: 'At Pickup', in_progress: 'In Progress', at_drop: 'At Drop', completed: 'Completed', cancelled: 'Cancelled' };
+const STATUS_COLORS = {
+  searching: tokens.blue,
+  accepted: tokens.amber,
+  arrived: tokens.purple,
+  at_pickup: tokens.purple,
+  picked_up: tokens.green,
+  in_progress: tokens.green,
+  reached_dropoff: tokens.green,
+  at_drop: tokens.green,
+  completed: tokens.textMuted,
+  cancelled: tokens.red,
+  cancelled_by_customer: tokens.red,
+};
+
+const STATUS_LABELS = {
+  searching: 'Finding Driver',
+  accepted: 'Driver Coming',
+  arrived: 'At Pickup',
+  at_pickup: 'At Pickup',
+  picked_up: 'In Transit',
+  in_progress: 'In Transit',
+  reached_dropoff: 'At Drop',
+  at_drop: 'At Drop',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  cancelled_by_customer: 'Cancelled',
+};
 
 export default function Bookings() {
   const [bookings, setBookings] = useState([]);
-  const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [dateRange, setDateRange] = useState('all');
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'bookings'), (snap) => {
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      data.sort((a, b) => (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0));
       setBookings(data);
     });
     return () => unsub();
   }, []);
 
-  const filtered = bookings.filter((b) => {
-    const matchStatus = filter === 'all' || b.status === filter;
-    const matchSearch = !search || b.customerName?.toLowerCase().includes(search.toLowerCase()) || b.driverName?.toLowerCase().includes(search.toLowerCase()) || b.pickup?.address?.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
-  });
+  const counts = useMemo(() => {
+    const c = { all: bookings.length };
+    bookings.forEach((b) => {
+      // Group some duplicate statuses
+      const key = b.status === 'arrived' ? 'at_pickup'
+                : b.status === 'picked_up' ? 'in_progress'
+                : b.status === 'reached_dropoff' ? 'at_drop'
+                : b.status === 'cancelled_by_customer' ? 'cancelled'
+                : b.status;
+      c[key] = (c[key] || 0) + 1;
+    });
+    return c;
+  }, [bookings]);
+
+  const statusOptions = [
+    { key: 'all',         label: 'All',          count: counts.all },
+    { key: 'searching',   label: 'Finding',      count: counts.searching || 0 },
+    { key: 'accepted',    label: 'Coming',       count: counts.accepted || 0 },
+    { key: 'at_pickup',   label: 'At Pickup',    count: counts.at_pickup || 0 },
+    { key: 'in_progress', label: 'In Transit',   count: counts.in_progress || 0 },
+    { key: 'completed',   label: 'Completed',    count: counts.completed || 0 },
+    { key: 'cancelled',   label: 'Cancelled',    count: counts.cancelled || 0 },
+  ];
+
+  const filtered = useMemo(() => {
+    let result = [...bookings];
+    if (status !== 'all') {
+      result = result.filter((b) => {
+        if (status === 'at_pickup')   return ['arrived', 'at_pickup'].includes(b.status);
+        if (status === 'in_progress') return ['picked_up', 'in_progress'].includes(b.status);
+        if (status === 'cancelled')   return ['cancelled', 'cancelled_by_customer'].includes(b.status);
+        return b.status === status;
+      });
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter((b) =>
+        (b.customerName || '').toLowerCase().includes(q) ||
+        (b.driverName || '').toLowerCase().includes(q) ||
+        (b.customerPhone || '').includes(q) ||
+        (b.driverPhone || '').includes(q) ||
+        (b.pickup?.address || '').toLowerCase().includes(q) ||
+        (b.drop?.address || '').toLowerCase().includes(q) ||
+        (b.id || '').toLowerCase().startsWith(q)
+      );
+    }
+    result = filterByDateRange(result, dateRange, (b) => toDate(b.createdAt));
+    return result;
+  }, [bookings, status, search, dateRange]);
+
+  const handleExport = () => {
+    exportCSV('bookings', [
+      { header: 'Booking ID',    get: (b) => b.id },
+      { header: 'Status',        get: (b) => STATUS_LABELS[b.status] || b.status || '' },
+      { header: 'Customer',      get: (b) => b.customerName || '' },
+      { header: 'Customer Phone',get: (b) => b.customerPhone || '' },
+      { header: 'Driver',        get: (b) => b.driverName || '' },
+      { header: 'Driver Phone',  get: (b) => b.driverPhone || '' },
+      { header: 'Vehicle',       get: (b) => b.vehicleLabel || b.vehicleType || '' },
+      { header: 'Pickup',        get: (b) => b.pickup?.address || '' },
+      { header: 'Drop',          get: (b) => b.drop?.address || '' },
+      { header: 'Distance (km)', get: (b) => b.distanceKm || '' },
+      { header: 'Total Fare ₹',  get: (b) => Math.round((b.fare?.totalInPaise || 0) / 100) },
+      { header: 'Payment',       get: (b) => b.paymentMethod === 'cod' ? 'COD' : 'UPI' },
+      { header: 'Created',       get: (b) => toDate(b.createdAt)?.toLocaleString() || '' },
+      { header: 'Completed',     get: (b) => toDate(b.completedAt)?.toLocaleString() || '' },
+    ], filtered);
+  };
 
   const cancelBooking = async (id) => {
-    if (!confirm('Cancel this booking?')) return;
+    if (!window.confirm('Cancel this booking?')) return;
     await updateDoc(doc(db, 'bookings', id), { status: 'cancelled' });
     setSelected(null);
   };
 
   const fmt = (p) => `₹${Math.round((p || 0) / 100)}`;
-  const fmtDate = (ts) => ts?.toDate ? ts.toDate().toLocaleString() : '—';
 
   return (
     <div>
-      <PageTitle title="📦 Bookings" sub="View and manage all delivery bookings" />
+      <PageTitle title="Bookings" sub={`${bookings.length} total bookings`} />
 
-      {/* Search + Filter */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <input
-          placeholder="🔍 Search customer, driver, address..."
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          style={{ flex: 1, minWidth: 240, padding: '10px 16px', border: '1.5px solid #E5E7EB', borderRadius: 8, fontSize: 14, outline: 'none' }}
-        />
-        <select value={filter} onChange={(e) => setFilter(e.target.value)}
-          style={{ padding: '10px 16px', border: '1.5px solid #E5E7EB', borderRadius: 8, fontSize: 14, fontWeight: 600 }}>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>{s === 'all' ? `All (${bookings.length})` : `${STATUS_LABELS[s]} (${bookings.filter((b) => b.status === s).length})`}</option>
-          ))}
-        </select>
-      </div>
+      <FilterBar
+        search={search} setSearch={setSearch}
+        searchPlaceholder="Search by customer, driver, phone, address, booking ID..."
+        dateRange={dateRange} setDateRange={setDateRange}
+        statusOptions={statusOptions} status={status} setStatus={setStatus}
+        onExport={handleExport}
+      />
 
-      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 400px' : '1fr', gap: 20 }}>
-        <Card style={{ padding: 0 }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #E5E7EB', backgroundColor: '#F9FAFB' }}>
-                  {['Customer', 'Driver', 'Vehicle', 'Fare', 'Payment', 'Status', 'Date'].map((h) => (
-                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: '#6B7280' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((b) => (
-                  <tr key={b.id} onClick={() => setSelected(b)}
-                    style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', backgroundColor: selected?.id === b.id ? '#10B98108' : 'transparent' }}>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 600 }}>{b.customerName}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{b.driverName || '—'}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13 }}>{b.vehicleLabel}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 700, color: '#10B981' }}>{fmt(b.fare?.totalInPaise)}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 12 }}>{b.paymentMethod === 'cod' ? '💵 COD' : '💳 UPI'}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ backgroundColor: (STATUS_COLORS[b.status] || '#9CA3AF') + '20', color: STATUS_COLORS[b.status] || '#9CA3AF', padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700 }}>
-                        {STATUS_LABELS[b.status] || b.status}
+      <div style={{ display: 'grid', gridTemplateColumns: selected ? '1fr 460px' : '1fr', gap: 16 }}>
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          {filtered.length === 0 ? (
+            <div style={{ padding: 56, textAlign: 'center', color: tokens.textHint, fontSize: 14 }}>
+              No bookings match these filters
+            </div>
+          ) : (
+            filtered.map((b) => {
+              const isSelected = selected?.id === b.id;
+              const fare = fmt(b.fare?.totalInPaise);
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => setSelected(b)}
+                  style={{
+                    padding: '14px 18px',
+                    borderBottom: `1px solid ${tokens.border}`,
+                    cursor: 'pointer',
+                    backgroundColor: isSelected ? tokens.bgPanel : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14,
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Badge label={STATUS_LABELS[b.status] || b.status} color={STATUS_COLORS[b.status] || tokens.textHint} />
+                      <span style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 600 }}>
+                        {b.vehicleLabel || b.vehicleType}
                       </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF' }}>{fmtDate(b.createdAt)}</td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>No bookings found</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                      {b.paymentMethod === 'cod' && (
+                        <Badge label="COD" color={tokens.amber} />
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: tokens.textPrimary }}>
+                      {b.customerName || 'Unknown customer'}
+                      {b.driverName ? ` → ${b.driverName}` : ''}
+                    </div>
+                    <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: tokens.green }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                        {b.pickup?.address || '—'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 1, backgroundColor: tokens.red }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240 }}>
+                        {b.drop?.address || '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: tokens.green }}>{fare}</div>
+                    <div style={{ fontSize: 10, color: tokens.textHint, marginTop: 4 }}>
+                      {toDate(b.createdAt)?.toLocaleDateString() || ''}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </Card>
 
-        {/* Detail */}
         {selected && (
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h3 style={{ fontWeight: 700, fontSize: 16 }}>Booking Details</h3>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9CA3AF' }}>✕</button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div>
+                <h3 style={{ fontWeight: 800, fontSize: 16, color: tokens.textPrimary, margin: 0 }}>
+                  Booking Details
+                </h3>
+                <div style={{ fontSize: 11, color: tokens.textHint, fontFamily: 'monospace', marginTop: 4 }}>
+                  {selected.id}
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <Badge
+                    label={STATUS_LABELS[selected.status] || selected.status}
+                    color={STATUS_COLORS[selected.status] || tokens.textHint}
+                  />
+                </div>
+              </div>
+              <button onClick={() => setSelected(null)} style={closeBtnStyle}>✕</button>
             </div>
 
-            <div style={{ backgroundColor: (STATUS_COLORS[selected.status] || '#9CA3AF') + '15', padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontWeight: 700, color: STATUS_COLORS[selected.status] }}>
-              {STATUS_LABELS[selected.status] || selected.status}
+            <SectionLabel>Customer</SectionLabel>
+            <div style={infoBlockStyle}>
+              <InfoRow label="Name"  value={selected.customerName} />
+              <InfoRow label="Phone" value={selected.customerPhone} mono last />
             </div>
 
-            <InfoBlock label="CUSTOMER" rows={[['Name', selected.customerName], ['Phone', selected.customerPhone]]} />
-            <InfoBlock label="DRIVER" rows={[['Name', selected.driverName || '—'], ['Phone', selected.driverPhone || '—']]} />
-            <InfoBlock label="LOCATIONS" rows={[['Pickup', selected.pickup?.address], ['Drop', selected.drop?.address]]} />
-            <InfoBlock label="FARE" rows={[
-              ['Base', fmt(selected.fare?.baseFare)],
-              ['Distance', fmt(selected.fare?.distanceFare)],
-              ['Total', fmt(selected.fare?.totalInPaise)],
-              ['Payment', selected.paymentMethod === 'cod' ? '💵 Cash on Delivery' : '💳 UPI'],
-              ['Commission', fmt(selected.commission?.amountInPaise) + ` (${selected.commission?.status || '—'})`],
-            ]} />
-            <InfoBlock label="TIMING" rows={[
-              ['Created', fmtDate(selected.createdAt)],
-              ['Accepted', fmtDate(selected.acceptedAt)],
-              ['Completed', fmtDate(selected.completedAt)],
-            ]} />
-            {selected.pickupOtp && <InfoBlock label="OTPs" rows={[['Pickup OTP', selected.pickupOtp], ['Delivery OTP', selected.deliveryOtp]]} />}
+            <SectionLabel>Driver</SectionLabel>
+            <div style={infoBlockStyle}>
+              <InfoRow label="Name"    value={selected.driverName} />
+              <InfoRow label="Phone"   value={selected.driverPhone} mono />
+              <InfoRow label="Vehicle" value={`${selected.driverVehicleLabel || ''} ${selected.driverVehicleNumber || ''}`.trim() || '—'} last />
+            </div>
 
-            {selected.status !== 'completed' && selected.status !== 'cancelled' && (
-              <button onClick={() => cancelBooking(selected.id)}
-                style={{ width: '100%', marginTop: 20, padding: 12, backgroundColor: '#EF4444', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>
-                ❌ Cancel Booking
+            <SectionLabel>Route</SectionLabel>
+            <div style={{
+              backgroundColor: tokens.bgPanel,
+              borderRadius: 12,
+              padding: 14,
+              border: `1px solid ${tokens.border}`,
+              marginBottom: 16,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: tokens.green, marginTop: 5, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: tokens.textPrimary, fontWeight: 500 }}>
+                  {selected.pickup?.address || '—'}
+                </div>
+              </div>
+              <div style={{ marginLeft: 4, height: 14, width: 1, backgroundColor: tokens.borderStrong, marginTop: 4, marginBottom: 4 }} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 1, backgroundColor: tokens.red, marginTop: 5, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: tokens.textPrimary, fontWeight: 500 }}>
+                  {selected.drop?.address || '—'}
+                </div>
+              </div>
+              {selected.distanceKm && (
+                <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 8, fontWeight: 600 }}>
+                  Distance: {selected.distanceKm} km
+                </div>
+              )}
+            </div>
+
+            <SectionLabel>Fare</SectionLabel>
+            <div style={infoBlockStyle}>
+              <InfoRow label="Base"     value={fmt(selected.fare?.baseFare)} />
+              <InfoRow label="Distance" value={fmt(selected.fare?.distanceFare)} />
+              {selected.fare?.pickupPremium > 0 && (
+                <InfoRow label="Pickup Premium" value={fmt(selected.fare.pickupPremium)} />
+              )}
+              <InfoRow label="Total"    value={fmt(selected.fare?.totalInPaise)} valueColor={tokens.green} />
+              <InfoRow label="Payment"  value={selected.paymentMethod === 'cod' ? 'COD' : 'UPI'} last />
+            </div>
+
+            <SectionLabel>Timeline</SectionLabel>
+            <div style={infoBlockStyle}>
+              <InfoRow label="Created"   value={toDate(selected.createdAt)?.toLocaleString() || '—'} />
+              {selected.acceptedAt && <InfoRow label="Accepted" value={toDate(selected.acceptedAt)?.toLocaleString() || '—'} />}
+              {selected.completedAt && <InfoRow label="Completed" value={toDate(selected.completedAt)?.toLocaleString() || '—'} valueColor={tokens.green} last />}
+              {!selected.completedAt && <InfoRow label="—" value="" last />}
+            </div>
+
+            {!['completed', 'cancelled', 'cancelled_by_customer'].includes(selected.status) && (
+              <button
+                onClick={() => cancelBooking(selected.id)}
+                style={{
+                  width: '100%',
+                  padding: 12,
+                  backgroundColor: tokens.bgCard,
+                  color: tokens.red,
+                  border: `1.5px solid #FECACA`,
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Force Cancel
               </button>
             )}
           </Card>
@@ -134,16 +305,51 @@ export default function Bookings() {
   );
 }
 
-function InfoBlock({ label, rows }) {
+const closeBtnStyle = {
+  background: tokens.bgPanel,
+  border: `1px solid ${tokens.border}`,
+  fontSize: 14, cursor: 'pointer',
+  color: tokens.textMuted,
+  width: 30, height: 30, borderRadius: 8,
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+};
+
+const infoBlockStyle = {
+  backgroundColor: tokens.bgPanel,
+  borderRadius: 12,
+  border: `1px solid ${tokens.border}`,
+  marginBottom: 16,
+};
+
+function SectionLabel({ children }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', marginBottom: 6, letterSpacing: 0.5 }}>{label}</div>
-      {rows.map(([k, v]) => (
-        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #F3F4F6' }}>
-          <span style={{ fontSize: 12, color: '#6B7280' }}>{k}</span>
-          <span style={{ fontSize: 13, color: '#1F2937', fontWeight: 500, textAlign: 'right', maxWidth: 180, wordBreak: 'break-all' }}>{v || '—'}</span>
-        </div>
-      ))}
+    <div style={{
+      fontSize: 11, fontWeight: 800, color: tokens.textMuted,
+      letterSpacing: 0.5, textTransform: 'uppercase',
+      marginBottom: 8, marginTop: 4,
+    }}>{children}</div>
+  );
+}
+
+function InfoRow({ label, value, mono = false, last = false, valueColor }) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '10px 12px',
+      borderBottom: last ? 'none' : `1px solid ${tokens.border}`,
+      gap: 12,
+    }}>
+      <span style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 700 }}>{label}</span>
+      <span style={{
+        fontSize: 13,
+        color: valueColor || tokens.textPrimary,
+        fontWeight: 700,
+        fontFamily: mono ? 'ui-monospace, monospace' : 'inherit',
+        textAlign: 'right',
+        wordBreak: 'break-all',
+      }}>
+        {value || '—'}
+      </span>
     </div>
   );
 }

@@ -57,7 +57,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <PageTitle title="Dashboard" sub="Real-time overview of LoadGo platform" />
+      <PageTitle title="Dashboard" sub="Real-time overview of Sarthi platform" />
 
       <div style={{
         display: 'grid',
