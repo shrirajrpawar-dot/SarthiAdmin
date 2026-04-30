@@ -316,6 +316,7 @@ export default function Settings() {
   const [upiId, setUpiId] = useState('sarthi@upi');
   const [appName, setAppName] = useState('Sarthi');
   const [searchRadiusKm, setSearchRadiusKm] = useState(5);
+  const [maxOwedCommission, setMaxOwedCommission] = useState(500);
   const [paymentMethods, setPaymentMethods] = useState({
     cod:        { enabled: true,  label: 'Cash on Delivery' },
     upi_direct: { enabled: true,  label: 'Pay Driver via UPI' },
@@ -344,6 +345,7 @@ export default function Settings() {
         if (data.upiId) setUpiId(data.upiId);
         if (data.appName) setAppName(data.appName);
         if (data.searchRadiusKm) setSearchRadiusKm(data.searchRadiusKm);
+        if (data.maxOwedCommission != null) setMaxOwedCommission(data.maxOwedCommission);
         if (data.paymentMethods) {
           setPaymentMethods((prev) => ({ ...prev, ...data.paymentMethods }));
         }
@@ -427,6 +429,7 @@ export default function Settings() {
         upiId,
         appName,
         searchRadiusKm: Number(searchRadiusKm) || 5,
+        maxOwedCommission: Number(maxOwedCommission) || 500,
         paymentMethods,
         razorpayKeyId,
         updatedAt: new Date().toISOString(),
@@ -454,9 +457,12 @@ export default function Settings() {
           <Row label="Driver Search Radius (km)">
             <input type="number" min="1" max="20" value={searchRadiusKm} onChange={(e) => setSearchRadiusKm(e.target.value)} style={styles.input} />
           </Row>
+          <Row label="Max Owed Commission (₹)">
+            <input type="number" min="0" value={maxOwedCommission} onChange={(e) => setMaxOwedCommission(e.target.value)} style={styles.input} placeholder="500" />
+          </Row>
         </div>
         <div style={{ fontSize: 11, color: tokens.textMuted, fontWeight: 500, marginTop: 4 }}>
-          Customer is shown a worst-case fare based on this radius. Actual driver may be closer.
+          Search radius: customer sees worst-case fare based on this. Max owed: driver can't go online if they owe more than this amount in commission.
         </div>
       </Card>
 

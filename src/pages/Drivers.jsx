@@ -61,6 +61,7 @@ export default function Drivers() {
     all: drivers.length,
     online: drivers.filter((d) => d.status === 'online').length,
     offline: drivers.filter((d) => d.status !== 'online').length,
+    blocked: drivers.filter((d) => d.blocked).length,
     approved: drivers.filter((d) => ['approved', 'verified'].includes(d.kyc?.status)).length,
     pending: drivers.filter((d) => ['pending', 'submitted', 'under_review'].includes(d.kyc?.status)).length,
     rejected: drivers.filter((d) => d.kyc?.status === 'rejected').length,
@@ -71,6 +72,7 @@ export default function Drivers() {
     { key: 'all', label: 'All', count: counts.all },
     { key: 'online', label: 'Online', count: counts.online },
     { key: 'offline', label: 'Offline', count: counts.offline },
+    { key: 'blocked', label: 'Blocked', count: counts.blocked },
     { key: 'approved', label: 'Approved', count: counts.approved },
     { key: 'pending', label: 'KYC Pending', count: counts.pending },
     { key: 'rejected', label: 'Rejected', count: counts.rejected },
@@ -84,6 +86,7 @@ export default function Drivers() {
       result = result.filter((d) => {
         if (status === 'online') return d.status === 'online';
         if (status === 'offline') return d.status !== 'online';
+        if (status === 'blocked') return !!d.blocked;
         if (status === 'approved') return ['approved', 'verified'].includes(d.kyc?.status);
         if (status === 'pending') return ['pending', 'submitted', 'under_review'].includes(d.kyc?.status);
         if (status === 'rejected') return d.kyc?.status === 'rejected';
@@ -109,7 +112,7 @@ export default function Drivers() {
       { header: 'Name',         get: (d) => displayName(d) },
       { header: 'Phone',        get: (d) => d.phone || '' },
       { header: 'Email',        get: (d) => d.email || '' },
-      { header: 'Status',       get: (d) => d.status === 'online' ? 'Online' : 'Offline' },
+      { header: 'Status',       get: (d) => d.blocked ? 'Blocked' : d.status === 'online' ? 'Online' : 'Offline' },
       { header: 'KYC Status',   get: (d) => d.kyc?.status || 'not_started' },
       { header: 'Aadhar',       get: (d) => d.kyc?.aadharNumber || '' },
       { header: 'PAN',          get: (d) => d.kyc?.panNumber || '' },
@@ -203,6 +206,7 @@ export default function Drivers() {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                     <Badge label={kycInfo.label} color={kycInfo.color} />
                     {isOnline && <Badge label="Online" color={tokens.green} />}
+                    {d.blocked && <Badge label="🚫 Blocked" color={tokens.red} />}
                   </div>
                 </div>
               );
@@ -336,6 +340,37 @@ export default function Drivers() {
                 Force Offline
               </button>
             )}
+
+            {/* Block / Unblock Driver */}
+            <button
+              onClick={async () => {
+                const newVal = !selected.blocked;
+                if (newVal && !window.confirm(`Block ${selected.name || selected.phone || 'this driver'}? They won't be able to go online.`)) return;
+                try {
+                  await updateDoc(doc(db, 'drivers', selected.id), {
+                    blocked: newVal,
+                    ...(newVal ? { status: 'offline' } : {}),
+                  });
+                  setSelected((prev) => ({ ...prev, blocked: newVal, ...(newVal ? { status: 'offline' } : {}) }));
+                } catch (e) {
+                  alert('Error: ' + e.message);
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: 12,
+                marginTop: 8,
+                backgroundColor: selected.blocked ? '#ECFDF5' : '#FEF2F2',
+                color: selected.blocked ? '#065F46' : '#991B1B',
+                border: `1.5px solid ${selected.blocked ? '#A7F3D0' : '#FECACA'}`,
+                borderRadius: 12,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: 'pointer',
+              }}
+            >
+              {selected.blocked ? '✅ Unblock Driver' : '🚫 Block Driver'}
+            </button>
           </Card>
         )}
       </div>
