@@ -16,6 +16,7 @@ const STATUS_COLORS = {
   completed: tokens.textMuted,
   cancelled: tokens.red,
   cancelled_by_customer: tokens.red,
+  awaiting_payment: tokens.amber,
 };
 
 const STATUS_LABELS = {
@@ -27,6 +28,7 @@ const STATUS_LABELS = {
   in_progress: 'In Transit',
   reached_dropoff: 'At Drop',
   at_drop: 'At Drop',
+  awaiting_payment: 'Awaiting Payment',
   completed: 'Completed',
   cancelled: 'Cancelled',
   cancelled_by_customer: 'Cancelled',
@@ -111,7 +113,8 @@ export default function Bookings() {
       { header: 'Drop',          get: (b) => b.drop?.address || '' },
       { header: 'Distance (km)', get: (b) => b.distanceKm || '' },
       { header: 'Total Fare ₹',  get: (b) => Math.round((b.fare?.totalInPaise || 0) / 100) },
-      { header: 'Payment',       get: (b) => b.paymentMethod === 'cod' ? 'COD' : 'UPI' },
+      { header: 'Payment Method', get: (b) => paymentMethodLabel(b.paymentMethod) },
+      { header: 'Payment Status', get: (b) => paymentStatusLabel(b.paymentStatus, b.paymentMethod) },
       { header: 'Created',       get: (b) => toDate(b.createdAt)?.toLocaleString() || '' },
       { header: 'Completed',     get: (b) => toDate(b.completedAt)?.toLocaleString() || '' },
     ], filtered);
@@ -167,9 +170,7 @@ export default function Bookings() {
                       <span style={{ fontSize: 12, color: tokens.textMuted, fontWeight: 600 }}>
                         {b.vehicleLabel || b.vehicleType}
                       </span>
-                      {b.paymentMethod === 'cod' && (
-                        <Badge label="COD" color={tokens.amber} />
-                      )}
+                      <PaymentBadge booking={b} />
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: tokens.textPrimary }}>
                       {b.customerName || 'Unknown customer'}
@@ -269,7 +270,8 @@ export default function Bookings() {
                 <InfoRow label="Pickup Premium" value={fmt(selected.fare.pickupPremium)} />
               )}
               <InfoRow label="Total"    value={fmt(selected.fare?.totalInPaise)} valueColor={tokens.green} />
-              <InfoRow label="Payment"  value={selected.paymentMethod === 'cod' ? 'COD' : 'UPI'} last />
+              <InfoRow label="Method"  value={paymentMethodLabel(selected.paymentMethod)} />
+              <InfoRow label="Status"  value={paymentStatusLabel(selected.paymentStatus, selected.paymentMethod)} valueColor={paymentStatusColor(selected.paymentStatus)} last />
             </div>
 
             <SectionLabel>Timeline</SectionLabel>
@@ -320,6 +322,37 @@ const infoBlockStyle = {
   border: `1px solid ${tokens.border}`,
   marginBottom: 16,
 };
+
+// — — Payment helpers — —
+function paymentMethodLabel(m) {
+  if (m === 'cod') return 'Cash';
+  if (m === 'upi_direct' || m === 'upi') return 'UPI to Driver';
+  if (m === 'razorpay') return 'Razorpay';
+  return m || '—';
+}
+function paymentStatusLabel(status, method) {
+  if (method === 'cod' && status !== 'driver_confirmed') return 'Pending (Cash)';
+  if (status === 'driver_confirmed') return '✓ Paid';
+  if (status === 'customer_paid') return 'Customer Paid (awaiting driver)';
+  if (status === 'pending') return 'Pending';
+  return status || '—';
+}
+function paymentStatusColor(status) {
+  if (status === 'driver_confirmed') return tokens.green;
+  if (status === 'customer_paid') return tokens.amber;
+  return tokens.textMuted;
+}
+function PaymentBadge({ booking }) {
+  const m = booking.paymentMethod;
+  const s = booking.paymentStatus;
+  if (s === 'driver_confirmed') {
+    return <Badge label="✓ Paid" color={tokens.green} />;
+  }
+  if (m === 'cod') return <Badge label="💵 COD" color={tokens.amber} />;
+  if (m === 'upi_direct' || m === 'upi') return <Badge label="💳 UPI" color={tokens.blue} />;
+  if (m === 'razorpay') return <Badge label="💳 Razorpay" color={tokens.purple || tokens.blue} />;
+  return null;
+}
 
 function SectionLabel({ children }) {
   return (

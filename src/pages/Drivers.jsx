@@ -24,6 +24,10 @@ function profileCompleteness(d) {
     !!d.vehicle?.label,
     !!d.kyc?.aadharPhoto,
     !!d.kyc?.licensePhoto,
+    !!d.kyc?.bank?.accountNumber,
+    !!d.kyc?.bank?.ifsc,
+    !!d.kyc?.bank?.accountHolderName,
+    !!d.kyc?.upiId,
   ];
   const filled = checks.filter(Boolean).length;
   return { filled, total: checks.length, pct: Math.round((filled / checks.length) * 100) };
@@ -110,6 +114,10 @@ export default function Drivers() {
       { header: 'Aadhar',       get: (d) => d.kyc?.aadharNumber || '' },
       { header: 'PAN',          get: (d) => d.kyc?.panNumber || '' },
       { header: 'License',      get: (d) => d.kyc?.licenseNumber || '' },
+      { header: 'Bank Holder',  get: (d) => d.kyc?.bank?.accountHolderName || '' },
+      { header: 'Bank Account', get: (d) => d.kyc?.bank?.accountNumber || '' },
+      { header: 'IFSC',         get: (d) => d.kyc?.bank?.ifsc || '' },
+      { header: 'UPI ID',       get: (d) => d.kyc?.upiId || '' },
       { header: 'Vehicle Type', get: (d) => d.vehicle?.label || '' },
       { header: 'Vehicle No',   get: (d) => d.vehicle?.number || '' },
       { header: 'Total Earnings ₹', get: (d) => Math.round((d.earnings?.totalInPaise || 0) / 100) },
@@ -269,6 +277,14 @@ export default function Drivers() {
               <InfoRow label="Type"   value={selected.vehicle?.label} />
               <InfoRow label="Model"  value={selected.vehicle?.model} />
               <InfoRow label="Number" value={selected.vehicle?.number} mono last />
+            </div>
+
+            <SectionLabel>Bank & UPI</SectionLabel>
+            <div style={infoBlockStyle}>
+              <InfoRow label="Holder Name"  value={selected.kyc?.bank?.accountHolderName} />
+              <InfoRow label="Account No."  value={selected.kyc?.bank?.accountNumber} mono />
+              <InfoRow label="IFSC"         value={selected.kyc?.bank?.ifsc} mono />
+              <InfoRow label="UPI ID"       value={selected.kyc?.upiId} mono last />
             </div>
 
             <SectionLabel>Earnings</SectionLabel>

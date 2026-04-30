@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { auth } from './firebase.js';
 import Dashboard from './pages/Dashboard.jsx';
 import KYCApprovals from './pages/KYCApprovals.jsx';
 import Bookings from './pages/Bookings.jsx';
@@ -23,12 +25,21 @@ const navItems = [
 function Login({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     if (password === ADMIN_PASSWORD) {
-      localStorage.setItem('admin_auth', 'true');
-      onLogin();
+      setLoading(true);
+      try {
+        // Sign in anonymously so Firestore rules see request.auth != null
+        await signInAnonymously(auth);
+        localStorage.setItem('admin_auth', 'true');
+        onLogin();
+      } catch (err) {
+        setError('Firebase auth failed: ' + err.message);
+      }
+      setLoading(false);
     } else {
       setError('Incorrect password');
     }
@@ -52,7 +63,9 @@ function Login({ onLogin }) {
             autoFocus
           />
           {error && <p style={loginStyles.error}>{error}</p>}
-          <button type="submit" style={loginStyles.btn}>Sign In</button>
+          <button type="submit" style={loginStyles.btn} disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
         </form>
         <p style={loginStyles.hint}>Contact admin if you need access</p>
       </div>
@@ -94,14 +107,50 @@ function Sidebar({ onLogout }) {
 }
 
 export default function App() {
-  const [isAuthed, setIsAuthed] = useState(
-    localStorage.getItem('admin_auth') === 'true'
-  );
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const handleLogout = () => {
+  // On mount: if localStorage says admin, re-establish Firebase anonymous auth
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (user && localStorage.getItem('admin_auth') === 'true') {
+        // Firebase session alive + localStorage valid
+        setIsAuthed(true);
+        setAuthLoading(false);
+      } else if (!user && localStorage.getItem('admin_auth') === 'true') {
+        // localStorage says logged in but Firebase session expired — re-auth
+        try {
+          await signInAnonymously(auth);
+          setIsAuthed(true);
+        } catch (e) {
+          localStorage.removeItem('admin_auth');
+          setIsAuthed(false);
+        }
+        setAuthLoading(false);
+      } else {
+        setIsAuthed(false);
+        setAuthLoading(false);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogout = async () => {
     localStorage.removeItem('admin_auth');
+    try { await auth.signOut(); } catch (e) { /* ignore */ }
     setIsAuthed(false);
   };
+
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#F3F4F6' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>⚙️</div>
+          <div style={{ color: '#6B7280', fontSize: 14, fontWeight: 600 }}>Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthed) return <Login onLogin={() => setIsAuthed(true)} />;
 
