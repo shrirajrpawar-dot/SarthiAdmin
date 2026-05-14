@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, onSnapshot, orderBy, updateDoc, doc, getDocs } from 'firebase/firestore';
-import { db } from '../../../firebase';
-import { useAuth } from '../../contexts/AuthContext';
+import { db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/Card';
 
 const tokens = {
