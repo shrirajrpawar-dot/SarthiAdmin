@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, onSnapshot, orderBy, updateDoc, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
-import Card from '../components/Card';
+import { Card } from '../components/Card';
 
 const tokens = {
   bgPanel: '#F3F4F6',
