@@ -9,6 +9,7 @@ import Drivers from './pages/Drivers.jsx';
 import Customers from './pages/Customers.jsx';
 import Commission from './pages/Commission.jsx';
 import Settings from './pages/Settings.jsx';
+import SOSAlerts from './pages/SOSAlerts.jsx';
 
 const ADMIN_PASSWORD = 'loadgo'; // Change this!
 
@@ -19,6 +20,7 @@ const navItems = [
   { path: '/drivers', label: 'Drivers', icon: '🚗' },
   { path: '/customers', label: 'Customers', icon: '👥' },
   { path: '/commission', label: 'Commission', icon: '💰' },
+  { path: '/sos', label: 'SOS Alerts', icon: '🚨' },
   { path: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 
@@ -166,6 +168,7 @@ export default function App() {
             <Route path="/drivers" element={<Drivers />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/commission" element={<Commission />} />
+            <Route path="/sos" element={<SOSAlerts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
@@ -225,7 +228,6 @@ const loginStyles = {
     color: '#6B7280',
     marginBottom: 26,
     margin: 0,
-    marginBottom: 26,
   },
   input: {
     width: '100%',
