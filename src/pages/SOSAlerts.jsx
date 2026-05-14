@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, onSnapshot, orderBy, updateDoc, doc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
 import Card from '../components/Card';
 
 const tokens = {
@@ -14,16 +13,12 @@ const tokens = {
 };
 
 export default function SOSAlerts() {
-  const { user } = useAuth();
   const [sosAlerts, setSosAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState('active'); // active, all
+  const [filterStatus, setFilterStatus] = useState('active');
   const [selected, setSelected] = useState(null);
 
-  // Fetch all SOS alerts
   useEffect(() => {
-    if (!user?.uid) { setLoading(false); return; }
-
     const sosQuery = filterStatus === 'active'
       ? query(
           collection(db, 'sos'),
@@ -41,7 +36,7 @@ export default function SOSAlerts() {
     });
 
     return () => unsub();
-  }, [user?.uid, filterStatus]);
+  }, [filterStatus]);
 
   const markResolved = async (sosId) => {
     if (!window.confirm('Mark this SOS as resolved?')) return;
@@ -49,7 +44,7 @@ export default function SOSAlerts() {
       await updateDoc(doc(db, 'sos', sosId), {
         status: 'resolved',
         resolvedAt: new Date().toISOString(),
-        resolvedBy: user.uid,
+        resolvedBy: 'admin',
       });
       alert('SOS marked as resolved');
     } catch (e) {
