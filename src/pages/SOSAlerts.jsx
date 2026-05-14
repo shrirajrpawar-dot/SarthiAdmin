@@ -19,21 +19,40 @@ export default function SOSAlerts() {
   const [selected, setSelected] = useState(null);
 
   useEffect(() => {
-    const sosQuery = filterStatus === 'active'
-      ? query(
-          collection(db, 'sos'),
-          where('status', '==', 'active'),
-          orderBy('triggeredAt', 'desc')
-        )
-      : query(
-          collection(db, 'sos'),
-          orderBy('triggeredAt', 'desc')
-        );
+    let sosQuery;
 
-    const unsub = onSnapshot(sosQuery, (snap) => {
-      setSosAlerts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-    });
+    if (filterStatus === 'active') {
+      // Query for active SOS - ordered by date
+      sosQuery = query(
+        collection(db, 'sos'),
+        where('status', '==', 'active'),
+        orderBy('triggeredAt', 'desc')
+      );
+    } else {
+      // Query for all SOS - ordered by date
+      sosQuery = query(
+        collection(db, 'sos'),
+        orderBy('triggeredAt', 'desc')
+      );
+    }
+
+    const unsub = onSnapshot(
+      sosQuery,
+      (snap) => {
+        const alerts = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data(),
+          triggeredAt: d.data().triggeredAt?.toDate?.() || new Date(d.data().triggeredAt),
+        }));
+        console.log(`[SOSAlerts] ${filterStatus === 'active' ? 'Active' : 'All'} SOS: ${alerts.length}`);
+        setSosAlerts(alerts);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('SOS Query Error:', error);
+        setLoading(false);
+      }
+    );
 
     return () => unsub();
   }, [filterStatus]);
@@ -101,10 +120,13 @@ export default function SOSAlerts() {
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 12 }}>
           <button
-            onClick={() => setFilterStatus('active')}
+            onClick={() => {
+              setFilterStatus('active');
+              setSelected(null);
+            }}
             style={{
               padding: '8px 16px',
-              backgroundColor: filterStatus === 'active' ? tokens.red : tokens.bgPanel,
+              backgroundColor: filterStatus === 'active' ? tokens.red : '#F3F4F6',
               color: filterStatus === 'active' ? '#FFFFFF' : '#111827',
               border: 'none',
               borderRadius: 8,
@@ -112,13 +134,16 @@ export default function SOSAlerts() {
               cursor: 'pointer',
             }}
           >
-            Active Alerts ({getSOSStats.active})
+            🚨 Active ({getSOSStats.active})
           </button>
           <button
-            onClick={() => setFilterStatus('all')}
+            onClick={() => {
+              setFilterStatus('all');
+              setSelected(null);
+            }}
             style={{
               padding: '8px 16px',
-              backgroundColor: filterStatus === 'all' ? tokens.red : tokens.bgPanel,
+              backgroundColor: filterStatus === 'all' ? tokens.red : '#F3F4F6',
               color: filterStatus === 'all' ? '#FFFFFF' : '#111827',
               border: 'none',
               borderRadius: 8,
@@ -126,30 +151,35 @@ export default function SOSAlerts() {
               cursor: 'pointer',
             }}
           >
-            All SOS ({sosAlerts.length})
+            📋 All ({sosAlerts.length})
           </button>
         </div>
       </Card>
 
       {/* Alerts List */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: tokens.textMuted }}>Loading...</div>
+        <div style={{ textAlign: 'center', padding: 40, color: tokens.textMuted }}>
+          ⏳ Loading alerts...
+        </div>
       ) : sosAlerts.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 40, color: tokens.textMuted }}>
-          No SOS alerts at the moment
+          ✓ No SOS alerts {filterStatus === 'active' ? 'right now' : 'found'}
         </div>
       ) : (
         <Card>
-          {sosAlerts.map(sos => (
+          {sosAlerts.map((sos, idx) => (
             <div
               key={sos.id}
               style={{
                 padding: 16,
-                borderBottom: `1px solid ${tokens.border}`,
+                borderBottom: idx < sosAlerts.length - 1 ? `1px solid ${tokens.border}` : 'none',
                 cursor: 'pointer',
                 backgroundColor: sos.status === 'active' ? '#FEF2F2' : '#FFFFFF',
+                transition: 'background 0.15s',
               }}
               onClick={() => setSelected(sos)}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = sos.status === 'active' ? '#FDE8E8' : '#F9FAFB'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = sos.status === 'active' ? '#FEF2F2' : '#FFFFFF'}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                 <div>
@@ -157,32 +187,34 @@ export default function SOSAlerts() {
                     {sos.type === 'driver' && '🚗'}
                     {sos.type === 'support' && '📞'}
                     {sos.type === 'police' && '🚔'}
-                    {' '} {sos.customerName}
+                    {' '} {sos.customerName || 'Unknown'}
                   </div>
                   <div style={{ fontSize: 12, color: tokens.textMuted, marginTop: 2 }}>
-                    {sos.customerPhone}
+                    {sos.customerPhone || 'No phone'}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{
-                    display: 'inline-block',
-                    padding: '4px 12px',
-                    backgroundColor: sos.status === 'active' ? tokens.red : tokens.green,
-                    color: '#FFFFFF',
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 700,
-                  }}>
+                  <div
+                    style={{
+                      display: 'inline-block',
+                      padding: '4px 12px',
+                      backgroundColor: sos.status === 'active' ? tokens.red : tokens.green,
+                      color: '#FFFFFF',
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
                     {sos.status === 'active' ? '🚨 Active' : '✓ Resolved'}
                   </div>
                 </div>
               </div>
 
               <div style={{ fontSize: 12, color: tokens.textMuted }}>
-                📍 {sos.pickupLocation?.address || 'Unknown location'}
+                📍 {sos.pickupLocation?.address || sos.customerLocation?.address || 'Location unknown'}
               </div>
               <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 4 }}>
-                {new Date(sos.triggeredAt?.toDate?.() || sos.triggeredAt).toLocaleString()}
+                {sos.triggeredAt?.toLocaleString?.() || new Date(sos.triggeredAt).toLocaleString()}
               </div>
             </div>
           ))}
@@ -198,10 +230,10 @@ export default function SOSAlerts() {
                 {selected.type === 'driver' && '🚗'}
                 {selected.type === 'support' && '📞'}
                 {selected.type === 'police' && '🚔'}
-                {' '} {selected.customerName}
+                {' '} {selected.customerName || 'Unknown Customer'}
               </h3>
               <div style={{ fontSize: 13, color: tokens.textMuted }}>
-                {selected.customerPhone}
+                {selected.customerPhone || 'No phone number'}
               </div>
             </div>
             <button
@@ -221,9 +253,9 @@ export default function SOSAlerts() {
             <div>
               <div style={{ fontSize: 11, color: tokens.textMuted, fontWeight: 600 }}>Alert Type</div>
               <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>
-                {selected.type === 'driver' && 'Driver SOS'}
-                {selected.type === 'support' && 'Support SOS'}
-                {selected.type === 'police' && 'Police SOS'}
+                {selected.type === 'driver' && 'Driver Alert'}
+                {selected.type === 'support' && 'Support Alert'}
+                {selected.type === 'police' && 'Police Alert'}
               </div>
             </div>
             <div>
@@ -235,18 +267,15 @@ export default function SOSAlerts() {
             <div>
               <div style={{ fontSize: 11, color: tokens.textMuted, fontWeight: 600 }}>Time</div>
               <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4 }}>
-                {new Date(selected.triggeredAt?.toDate?.() || selected.triggeredAt).toLocaleString()}
+                {selected.triggeredAt?.toLocaleString?.() || new Date(selected.triggeredAt).toLocaleString()}
               </div>
             </div>
           </div>
 
           <div style={{ backgroundColor: tokens.bgPanel, padding: 12, borderRadius: 8, marginBottom: 16 }}>
-            <div style={{ fontSize: 11, color: tokens.textMuted, fontWeight: 600, marginBottom: 4 }}>Location</div>
+            <div style={{ fontSize: 11, color: tokens.textMuted, fontWeight: 600, marginBottom: 4 }}>Current Location</div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>
-              📍 {selected.pickupLocation?.address || 'Unknown'}
-            </div>
-            <div style={{ fontSize: 12, color: tokens.textMuted, marginTop: 2 }}>
-              Lat: {selected.pickupLocation?.lat?.toFixed(4)}, Lng: {selected.pickupLocation?.lng?.toFixed(4)}
+              📍 {selected.customerLocation?.address || `${selected.customerLocation?.lat?.toFixed(4)}, ${selected.customerLocation?.lng?.toFixed(4)}`}
             </div>
           </div>
 
