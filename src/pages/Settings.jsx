@@ -326,6 +326,12 @@ export default function Settings() {
   const [savedMsg, setSavedMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Version control
+  const [latestVersion, setLatestVersion] = useState('1.0.0');
+  const [updateMode, setUpdateMode] = useState('optional'); // 'force', 'optional', 'silent'
+  const [updateDescription, setUpdateDescription] = useState('');
+  const [updateFeatures, setUpdateFeatures] = useState('');
+
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
       if (snap.exists()) {
@@ -352,7 +358,19 @@ export default function Settings() {
         if (data.razorpayKeyId) setRazorpayKeyId(data.razorpayKeyId);
       }
     });
-    return () => unsub();
+
+    // Load version settings
+    const unsubVersion = onSnapshot(doc(db, 'settings', 'app-version'), (snap) => {
+      if (snap.exists()) {
+        const vd = snap.data();
+        if (vd.latest) setLatestVersion(vd.latest);
+        if (vd.mode) setUpdateMode(vd.mode);
+        if (vd.description) setUpdateDescription(vd.description);
+        if (vd.features) setUpdateFeatures(Array.isArray(vd.features) ? vd.features.join('\n') : vd.features);
+      }
+    });
+
+    return () => { unsub(); unsubVersion(); };
   }, []);
 
   const togglePaymentMethod = (key) => {
@@ -434,6 +452,15 @@ export default function Settings() {
         razorpayKeyId,
         updatedAt: new Date().toISOString(),
       });
+
+      // Save version settings separately
+      await setDoc(doc(db, 'settings', 'app-version'), {
+        latest: latestVersion,
+        mode: updateMode,
+        description: updateDescription,
+        features: updateFeatures.split('\n').map(f => f.trim()).filter(Boolean),
+        updatedAt: new Date().toISOString(),
+      });
       setSavedMsg('✓ Settings saved');
       setTimeout(() => setSavedMsg(''), 3000);
     } catch (e) {
@@ -487,6 +514,81 @@ export default function Settings() {
         onPhotoUpload={uploadPhoto}
         searchRadiusKm={searchRadiusKm}
       />
+
+      {/* Version Control Section */}
+      <Card style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 800, color: tokens.textPrimary, margin: 0, marginBottom: 14 }}>
+          📱 App Version Control
+        </h2>
+        <div style={{ fontSize: 12, color: tokens.textMuted, marginBottom: 16, fontWeight: 500 }}>
+          Control app update prompts shown to users. Force update blocks the app until updated.
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
+          <Row label="Latest Version Number">
+            <input
+              value={latestVersion}
+              onChange={(e) => setLatestVersion(e.target.value)}
+              style={styles.input}
+              placeholder="1.0.1"
+            />
+          </Row>
+          <Row label="Update Mode">
+            <select
+              value={updateMode}
+              onChange={(e) => setUpdateMode(e.target.value)}
+              style={{ ...styles.input, cursor: 'pointer' }}
+            >
+              <option value="optional">Optional — User can dismiss</option>
+              <option value="force">Force — Must update to use app</option>
+              <option value="silent">Silent — No popup shown</option>
+            </select>
+          </Row>
+        </div>
+
+        <Row label="Update Description">
+          <input
+            value={updateDescription}
+            onChange={(e) => setUpdateDescription(e.target.value)}
+            style={styles.input}
+            placeholder="Bug fixes and performance improvements"
+          />
+        </Row>
+
+        <Row label="What's New (one per line)">
+          <textarea
+            value={updateFeatures}
+            onChange={(e) => setUpdateFeatures(e.target.value)}
+            style={{ ...styles.input, minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
+            placeholder={"Fixed SOS button\nImproved location sharing\nBetter error messages"}
+          />
+        </Row>
+
+        <div style={{
+          padding: 12,
+          backgroundColor: updateMode === 'force' ? '#FEF2F2' : updateMode === 'optional' ? '#FEF3C7' : tokens.bgPanel,
+          borderRadius: 10,
+          border: `1px solid ${updateMode === 'force' ? '#FECACA' : updateMode === 'optional' ? '#FDE68A' : tokens.border}`,
+          fontSize: 12,
+          fontWeight: 600,
+        }}>
+          {updateMode === 'force' && (
+            <span style={{ color: '#DC2626' }}>
+              🔴 <b>Force Update:</b> Users CANNOT use the app until they update to v{latestVersion}
+            </span>
+          )}
+          {updateMode === 'optional' && (
+            <span style={{ color: '#92400E' }}>
+              🟡 <b>Optional Update:</b> Users will see popup but can tap "Not Now" to dismiss
+            </span>
+          )}
+          {updateMode === 'silent' && (
+            <span style={{ color: tokens.textMuted }}>
+              ⚪ <b>Silent:</b> No popup shown. Version checked in background only.
+            </span>
+          )}
+        </div>
+      </Card>
 
       {/* Payment Methods Section */}
       <Card style={{ marginBottom: 16 }}>

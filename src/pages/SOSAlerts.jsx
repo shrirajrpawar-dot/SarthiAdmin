@@ -13,49 +13,84 @@ const tokens = {
 };
 
 export default function SOSAlerts() {
-  const [sosAlerts, setSosAlerts] = useState([]);
+  const [allSOSAlerts, setAllSOSAlerts] = useState([]);
+  const [activeSOSAlerts, setActiveSOSAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('active');
   const [selected, setSelected] = useState(null);
 
+  // LISTENER 1: Active SOS (updates in real-time)
   useEffect(() => {
-    let sosQuery;
+    console.log('[SOSAlerts] Setting up ACTIVE listener...');
+    const activeQuery = query(
+      collection(db, 'sos'),
+      where('status', '==', 'active'),
+      orderBy('triggeredAt', 'desc')
+    );
 
-    if (filterStatus === 'active') {
-      // Query for active SOS - ordered by date
-      sosQuery = query(
-        collection(db, 'sos'),
-        where('status', '==', 'active'),
-        orderBy('triggeredAt', 'desc')
-      );
-    } else {
-      // Query for all SOS - ordered by date
-      sosQuery = query(
-        collection(db, 'sos'),
-        orderBy('triggeredAt', 'desc')
-      );
-    }
-
-    const unsub = onSnapshot(
-      sosQuery,
+    const unsubActive = onSnapshot(
+      activeQuery,
       (snap) => {
-        const alerts = snap.docs.map(d => ({
+        const active = snap.docs.map(d => ({
           id: d.id,
           ...d.data(),
           triggeredAt: d.data().triggeredAt?.toDate?.() || new Date(d.data().triggeredAt),
         }));
-        console.log(`[SOSAlerts] ${filterStatus === 'active' ? 'Active' : 'All'} SOS: ${alerts.length}`);
-        setSosAlerts(alerts);
+        console.log(`[SOSAlerts] Active SOS updated: ${active.length} alerts`);
+        setActiveSOSAlerts(active);
+      },
+      (error) => {
+        console.error('[SOSAlerts] Active query error:', error);
+        if (error.code === 'failed-precondition') {
+          alert('⚠️ Firestore index is being created. This may take a few minutes. Please refresh.');
+        }
+      }
+    );
+
+    return () => unsubActive();
+  }, []);
+
+  // LISTENER 2: All SOS (updates in real-time)
+  useEffect(() => {
+    console.log('[SOSAlerts] Setting up ALL listener...');
+    const allQuery = query(
+      collection(db, 'sos'),
+      orderBy('triggeredAt', 'desc')
+    );
+
+    const unsubAll = onSnapshot(
+      allQuery,
+      (snap) => {
+        const all = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data(),
+          triggeredAt: d.data().triggeredAt?.toDate?.() || new Date(d.data().triggeredAt),
+        }));
+        console.log(`[SOSAlerts] All SOS updated: ${all.length} alerts`);
+        setAllSOSAlerts(all);
         setLoading(false);
       },
       (error) => {
-        console.error('SOS Query Error:', error);
+        console.error('[SOSAlerts] All query error:', error);
         setLoading(false);
       }
     );
 
-    return () => unsub();
-  }, [filterStatus]);
+    return () => unsubAll();
+  }, []);
+
+  // Determine which list to display
+  const displayAlerts = filterStatus === 'active' ? activeSOSAlerts : allSOSAlerts;
+
+  const getSOSStats = useMemo(() => {
+    const all = [...activeSOSAlerts, ...allSOSAlerts];
+    return {
+      active: activeSOSAlerts.length,
+      driver: all.filter(s => s.type === 'driver').length,
+      support: all.filter(s => s.type === 'support').length,
+      police: all.filter(s => s.type === 'police').length,
+    };
+  }, [activeSOSAlerts, allSOSAlerts]);
 
   const markResolved = async (sosId) => {
     if (!window.confirm('Mark this SOS as resolved?')) return;
@@ -66,19 +101,11 @@ export default function SOSAlerts() {
         resolvedBy: 'admin',
       });
       alert('SOS marked as resolved');
+      setSelected(null);
     } catch (e) {
       alert('Error: ' + e.message);
     }
   };
-
-  const getSOSStats = useMemo(() => {
-    return {
-      active: sosAlerts.filter(s => s.status === 'active').length,
-      driver: sosAlerts.filter(s => s.type === 'driver').length,
-      support: sosAlerts.filter(s => s.type === 'support').length,
-      police: sosAlerts.filter(s => s.type === 'police').length,
-    };
-  }, [sosAlerts]);
 
   return (
     <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
@@ -94,7 +121,7 @@ export default function SOSAlerts() {
             {getSOSStats.active}
           </div>
           <div style={{ fontSize: 11, color: tokens.textMuted, marginTop: 4 }}>
-            Require immediate action
+            🔴 Real-time updates enabled
           </div>
         </Card>
 
@@ -151,7 +178,7 @@ export default function SOSAlerts() {
               cursor: 'pointer',
             }}
           >
-            📋 All ({sosAlerts.length})
+            📋 All ({allSOSAlerts.length})
           </button>
         </div>
       </Card>
@@ -161,18 +188,18 @@ export default function SOSAlerts() {
         <div style={{ textAlign: 'center', padding: 40, color: tokens.textMuted }}>
           ⏳ Loading alerts...
         </div>
-      ) : sosAlerts.length === 0 ? (
+      ) : displayAlerts.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 40, color: tokens.textMuted }}>
           ✓ No SOS alerts {filterStatus === 'active' ? 'right now' : 'found'}
         </div>
       ) : (
         <Card>
-          {sosAlerts.map((sos, idx) => (
+          {displayAlerts.map((sos, idx) => (
             <div
               key={sos.id}
               style={{
                 padding: 16,
-                borderBottom: idx < sosAlerts.length - 1 ? `1px solid ${tokens.border}` : 'none',
+                borderBottom: idx < displayAlerts.length - 1 ? `1px solid ${tokens.border}` : 'none',
                 cursor: 'pointer',
                 backgroundColor: sos.status === 'active' ? '#FEF2F2' : '#FFFFFF',
                 transition: 'background 0.15s',
