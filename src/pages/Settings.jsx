@@ -331,6 +331,7 @@ export default function Settings() {
   const [updateMode, setUpdateMode] = useState('optional'); // 'force', 'optional', 'silent'
   const [updateDescription, setUpdateDescription] = useState('');
   const [updateFeatures, setUpdateFeatures] = useState('');
+  const [storeUrl, setStoreUrl] = useState('');
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'app'), (snap) => {
@@ -367,6 +368,7 @@ export default function Settings() {
         if (vd.mode) setUpdateMode(vd.mode);
         if (vd.description) setUpdateDescription(vd.description);
         if (vd.features) setUpdateFeatures(Array.isArray(vd.features) ? vd.features.join('\n') : vd.features);
+        if (vd.storeUrl) setStoreUrl(vd.storeUrl);
       }
     });
 
@@ -459,6 +461,7 @@ export default function Settings() {
         mode: updateMode,
         description: updateDescription,
         features: updateFeatures.split('\n').map(f => f.trim()).filter(Boolean),
+        storeUrl: storeUrl,
         updatedAt: new Date().toISOString(),
       });
       setSavedMsg('✓ Settings saved');
@@ -553,6 +556,18 @@ export default function Settings() {
             style={styles.input}
             placeholder="Bug fixes and performance improvements"
           />
+        </Row>
+
+        <Row label="Play Store / Download URL">
+          <input
+            value={storeUrl}
+            onChange={(e) => setStoreUrl(e.target.value)}
+            style={styles.input}
+            placeholder="https://play.google.com/store/apps/details?id=com.shrirajrpawar.Sarthi"
+          />
+          <div style={{ fontSize: 10, color: tokens.textMuted, marginTop: 4 }}>
+            Paste your Play Store listing URL here. The "Update Now" button in the app will open this link.
+          </div>
         </Row>
 
         <Row label="What's New (one per line)">
