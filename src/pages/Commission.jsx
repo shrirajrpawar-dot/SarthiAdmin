@@ -14,7 +14,6 @@ const tokens = {
 };
 
 export default function Commission() {
-  const { user } = useAuth();
   const [drivers, setDrivers] = useState([]);
   const [commissionsMap, setCommissionsMap] = useState({});
   const [pendingPayments, setPendingPayments] = useState([]);
@@ -27,16 +26,15 @@ export default function Commission() {
 
   // Fetch all drivers
   useEffect(() => {
-    if (!user?.uid) { setLoading(false); return; }
     const unsub = onSnapshot(collection(db, 'drivers'), (snap) => {
       setDrivers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
-  }, [user?.uid]);
+  }, []);
 
   // Fetch commission aggregates + pending verifications
   useEffect(() => {
-    if (!user?.uid || drivers.length === 0) return;
+    if (drivers.length === 0) return;
     
     const fetchCommissions = async () => {
       const newMap = {};
@@ -163,7 +161,7 @@ export default function Commission() {
     };
   }, [commissionsMap]);
 
-  if (!user) return <div>Not logged in</div>;
+  if (loading) return <div style={{ textAlign: 'center', padding: 40, color: tokens.textMuted }}>Loading commissions...</div>;
 
   return (
     <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
