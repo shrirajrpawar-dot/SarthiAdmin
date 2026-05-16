@@ -331,9 +331,10 @@ function paymentMethodLabel(m) {
   return m || '—';
 }
 function paymentStatusLabel(status, method) {
-  if (method === 'cod' && status !== 'driver_confirmed') return 'Pending (Cash)';
-  if (status === 'driver_confirmed') return '✓ Paid';
-  if (status === 'customer_paid') return 'Customer Paid (awaiting driver)';
+  if (status === 'driver_confirmed') return method === 'cod' ? '✓ Cash Collected' : '✓ Paid';
+  if (status === 'customer_paid' && method === 'cod') return '💵 Customer Says Paid (awaiting driver)';
+  if (status === 'customer_paid') return '💳 Customer Paid (awaiting driver)';
+  if (method === 'cod' && (!status || status === 'pending')) return '⏳ Cash — Not Yet Collected';
   if (status === 'pending') return 'Pending';
   return status || '—';
 }
